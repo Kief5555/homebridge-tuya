@@ -323,16 +323,18 @@ export class TuyaAccessory {
    */
   async getSaturation(): Promise<CharacteristicValue> {
     const colorData = this.getColorData();
-    if (!colorData) return 0;
+    if (!colorData) {
+      return 0;
+    }
     
     // If V2, scale is 0-1000. If V1, scale is 0-255.
     // getColorData handles creating the object, but we need to know source scale.
     // Let's check which DP exists.
     if (this.hasStatus('colour_data_v2')) {
-       return Math.round(colorData.s / 10);
+      return Math.round(colorData.s / 10);
     } else {
-       // V1 scale 0-255
-       return Math.round((colorData.s / 255) * 100);
+      // V1 scale 0-255
+      return Math.round((colorData.s / 255) * 100);
     }
   }
 
