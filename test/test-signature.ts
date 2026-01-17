@@ -22,7 +22,7 @@ console.log('──────────────────────�
 
 const emptyHash = crypto.createHash('sha256').update('').digest('hex');
 console.log(`  Empty body hash: ${emptyHash}`);
-console.log(`  Expected: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`);
+console.log('  Expected: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
 console.log(`  ✅ ${emptyHash === 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855' ? 'PASS' : 'FAIL'}`);
 console.log();
 
@@ -40,7 +40,7 @@ const path = '/v1.0/iot-03/open-api-qrcode/token';
 const method = 'POST';
 
 const stringToSign = [method, bodyHash, '', path].join('\n');
-console.log(`  String to sign (escaped):`);
+console.log('  String to sign (escaped):');
 console.log(`    ${JSON.stringify(stringToSign)}`);
 console.log();
 

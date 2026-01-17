@@ -4,7 +4,7 @@
  * Handles device discovery and control using Tuya OpenAPI.
  */
 
-import { TuyaOpenAPI, TuyaApiResponse } from './TuyaOpenAPI.js';
+import { TuyaOpenAPI } from './TuyaOpenAPI.js';
 import type { Logger } from 'homebridge';
 
 export interface TuyaDevice {

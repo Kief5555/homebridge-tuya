@@ -62,7 +62,9 @@ export class TuyaOpenAPI {
    * Check if we have valid tokens
    */
   public hasValidTokens(): boolean {
-    if (!this.tokens) return false;
+    if (!this.tokens) {
+      return false;
+    }
     return this.tokens.expiresAt > Date.now() + 5 * 60 * 1000;
   }
 
@@ -165,7 +167,9 @@ export class TuyaOpenAPI {
       clearTimeout(this.tokenRefreshTimer);
     }
 
-    if (!this.tokens) return;
+    if (!this.tokens) {
+      return;
+    }
 
     const refreshIn = this.tokens.expiresAt - Date.now() - 5 * 60 * 1000;
     

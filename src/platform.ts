@@ -175,9 +175,11 @@ export class TuyaPlatform implements DynamicPlatformPlugin {
    * Check if a device should be hidden
    */
   private isDeviceHidden(device: TuyaDevice): boolean {
-    if (!this.config.hiddenAccessories) return false;
+    if (!this.config.hiddenAccessories) {
+      return false;
+    }
     return this.config.hiddenAccessories.some(
-      hidden => hidden === device.id || hidden === device.name
+      hidden => hidden === device.id || hidden === device.name,
     );
   }
 

@@ -1,6 +1,6 @@
-import type { API, Characteristic, CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
+import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
 import type { TuyaPlatform } from './platform.js';
-import { TuyaDeviceAPI, TuyaDevice, TuyaDeviceStatus, DEVICE_CATEGORIES } from './api/index.js';
+import { TuyaDeviceAPI, TuyaDevice } from './api/index.js';
 
 /**
  * TuyaAccessory
@@ -38,28 +38,28 @@ export class TuyaAccessory {
     this.platform.log.debug(`Setting up ${this.device.name} as ${accessoryType || 'switch'} (category: ${category})`);
 
     switch (accessoryType) {
-      case 'light':
-        this.setupLightService();
-        break;
-      case 'outlet':
-        this.setupOutletService();
-        break;
-      case 'fan':
-        this.setupFanService();
-        break;
-      case 'motion_sensor':
-        this.setupMotionSensorService();
-        break;
-      case 'contact_sensor':
-        this.setupContactSensorService();
-        break;
-      case 'temp_sensor':
-        this.setupTemperatureSensorService();
-        break;
-      case 'switch':
-      default:
-        this.setupSwitchService();
-        break;
+    case 'light':
+      this.setupLightService();
+      break;
+    case 'outlet':
+      this.setupOutletService();
+      break;
+    case 'fan':
+      this.setupFanService();
+      break;
+    case 'motion_sensor':
+      this.setupMotionSensorService();
+      break;
+    case 'contact_sensor':
+      this.setupContactSensorService();
+      break;
+    case 'temp_sensor':
+      this.setupTemperatureSensorService();
+      break;
+    case 'switch':
+    default:
+      this.setupSwitchService();
+      break;
     }
   }
 

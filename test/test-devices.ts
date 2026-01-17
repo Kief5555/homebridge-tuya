@@ -92,22 +92,22 @@ async function main() {
     for (const device of devices) {
       const type = deviceApi.getAccessoryType(device.category) || 'unknown';
       
-      console.log(`┌─────────────────────────────────────────────────────────────────`);
+      console.log('┌─────────────────────────────────────────────────────────────────');
       console.log(`│ ${device.name}`);
-      console.log(`├─────────────────────────────────────────────────────────────────`);
+      console.log('├─────────────────────────────────────────────────────────────────');
       console.log(`│ ID:       ${device.id}`);
       console.log(`│ Category: ${device.category} (${type})`);
       console.log(`│ Product:  ${device.product_name || 'N/A'}`);
       console.log(`│ Online:   ${device.online ? '✅ Yes' : '❌ No'}`);
       
       if (device.status && device.status.length > 0) {
-        console.log(`│ Status:`);
+        console.log('│ Status:');
         for (const status of device.status) {
           console.log(`│   - ${status.code}: ${JSON.stringify(status.value)}`);
         }
       }
       
-      console.log(`└─────────────────────────────────────────────────────────────────`);
+      console.log('└─────────────────────────────────────────────────────────────────');
       console.log();
     }
 

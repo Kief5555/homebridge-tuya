@@ -220,30 +220,30 @@ export class TuyaLinkingAuth {
           const status = await this.checkAuthStatus();
 
           switch (status.status) {
-            case 'authorized':
+          case 'authorized':
+            this.stopPolling();
+            if (status.tokens) {
+              resolve(status.tokens);
+            } else {
+              reject(new Error('Authorization completed but no tokens received'));
+            }
+            break;
+
+          case 'expired':
+            this.stopPolling();
+            reject(new Error('QR code expired. Please generate a new one.'));
+            break;
+
+          case 'scanned':
+            this.log?.debug('QR code scanned, waiting for authorization...');
+            break;
+
+          case 'pending':
+            if (Date.now() - startTime > timeoutMs) {
               this.stopPolling();
-              if (status.tokens) {
-                resolve(status.tokens);
-              } else {
-                reject(new Error('Authorization completed but no tokens received'));
-              }
-              break;
-
-            case 'expired':
-              this.stopPolling();
-              reject(new Error('QR code expired. Please generate a new one.'));
-              break;
-
-            case 'scanned':
-              this.log?.debug('QR code scanned, waiting for authorization...');
-              break;
-
-            case 'pending':
-              if (Date.now() - startTime > timeoutMs) {
-                this.stopPolling();
-                reject(new Error('Authorization timed out.'));
-              }
-              break;
+              reject(new Error('Authorization timed out.'));
+            }
+            break;
           }
         } catch (error) {
           this.stopPolling();
