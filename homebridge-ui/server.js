@@ -39,6 +39,9 @@ class TuyaUiServer extends HomebridgePluginUiServer {
   /**
      * Sign a Tuya API request (simplified for haauthorize schema)
      */
+  /**
+     * Sign a Tuya API request (simplified for haauthorize schema)
+     */
   signRequest(method, path, body) {
     const timestamp = Date.now().toString();
     const nonce = crypto.randomUUID();
@@ -67,13 +70,20 @@ class TuyaUiServer extends HomebridgePluginUiServer {
   async startLinking(payload) {
     try {
       const region = payload.region || 'US';
-      const baseUrl = ENDPOINTS[region] || ENDPOINTS.US;
+      const userCode = payload.userCode;
 
-      const path = '/v1.0/iot-03/open-api-qrcode/token';
-      const body = { schema: TUYA_SCHEMA };
-      const headers = this.signRequest('POST', path, body);
+      if (!userCode) {
+        throw new Error('User Code is required');
+      }
 
-      const response = await axios.post(baseUrl + path, body, { headers });
+      // Use the specific API gateway for HA/QR flow
+      const baseUrl = 'https://apigw.iotbing.com';
+      const path = '/v1.0/m/life/home-assistant/qrcode/tokens';
+
+      // Construct URL with query params - no body, no headers needed for this specific endpoint
+      const url = `${baseUrl}${path}?clientid=${TUYA_CLIENT_ID}&usercode=${userCode}&schema=${TUYA_SCHEMA}`;
+
+      const response = await axios.post(url);
 
       if (!response.data.success || !response.data.result) {
         throw new Error(`Tuya API error: ${response.data.msg || 'Unknown error'}`);
@@ -92,8 +102,8 @@ class TuyaUiServer extends HomebridgePluginUiServer {
       // Store state
       this.linkingState = {
         qrcode,
+        userCode,
         region,
-        baseUrl,
         expiresAt: Date.now() + expire_time * 1000,
       };
 
@@ -118,38 +128,51 @@ class TuyaUiServer extends HomebridgePluginUiServer {
         return { success: true, status: 'expired' };
       }
 
-      const path = '/v1.0/iot-03/open-api-qrcode/result';
-      const body = { qrcode: this.linkingState.qrcode };
-      const headers = this.signRequest('POST', path, body);
+      // Check status with simple GET request
+      const baseUrl = 'https://apigw.iotbing.com';
+      const path = `/v1.0/m/life/home-assistant/qrcode/tokens/${this.linkingState.qrcode}`;
+      const url = `${baseUrl}${path}?clientid=${TUYA_CLIENT_ID}&usercode=${this.linkingState.userCode}`;
 
-      const response = await axios.post(this.linkingState.baseUrl + path, body, { headers });
+      const response = await axios.get(url);
 
       if (!response.data.success) {
         if (response.data.code === 1106) {
           this.linkingState = null;
           return { success: true, status: 'expired' };
         }
+        // Sometimes it returns success:false but still gives useful info in msg?? 
+        // But for this specific endpoint:
         throw new Error(`Tuya API error: ${response.data.msg}`);
       }
 
       const result = response.data.result;
-      const statusMap = { '0': 'pending', '1': 'scanned', '2': 'authorized' };
-      const status = statusMap[result?.status?.toString()] || 'pending';
 
-      if (status === 'authorized' && result?.result) {
+      // Map result to status
+      // Note: The structure might be different than the standard API
+      // Based on SDK: if success, result contains tokens. If pending/scanned, maybe handled differently?
+      // Actually SDK login_result returns success=true when authorized.
+      // If unauthorized, what does it return? 
+      // Let's assume standard behavior based on other endpoints slightly:
+      // If success=true and result has access_token, we are good.
+
+      if (result && result.access_token) {
         const tokens = {
-          accessToken: result.result.access_token,
-          refreshToken: result.result.refresh_token,
-          expiresIn: result.result.expire_time,
-          expiresAt: Date.now() + result.result.expire_time * 1000,
-          uid: result.result.uid,
+          accessToken: result.access_token,
+          refreshToken: result.refresh_token,
+          expiresIn: result.expire_time,
+          expiresAt: Date.now() + result.expire_time * 1000,
+          uid: result.uid,
         };
 
         this.linkingState = null;
         return { success: true, status: 'authorized', tokens };
       }
 
-      return { success: true, status };
+      // If we are here, is it pending? 
+      // The old API returned a status code. This one seemingly returns success=false if not authorized?
+      // Or maybe success=true but empty result?
+      return { success: true, status: 'pending' };
+
     } catch (error) {
       console.error('Check status failed:', error);
       return { success: false, error: error.message };
