@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Link Tuya Account</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      padding: 20px;
+      background: transparent;
+    }
+
+    .container {
+      max-width: 400px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 24px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      margin-bottom: 16px;
+    }
+
+    .qr-container {
+      text-align: center;
+      padding: 20px 0;
+    }
+
+    .qr-container img {
+      max-width: 200px;
+      border-radius: 8px;
+      border: 4px solid #f0f0f0;
+    }
+
+    .status {
+      text-align: center;
+      padding: 16px;
+      border-radius: 8px;
+      margin: 16px 0;
+      font-weight: 500;
+    }
+
+    .status.pending {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .status.scanned {
+      background: #d1ecf1;
+      color: #0c5460;
+    }
+
+    .status.authorized {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .status.expired {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .instructions {
+      background: #f8f9fa;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .instructions h3 {
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+      color: #666;
+    }
+
+    .instructions ol {
+      margin-left: 20px;
+      font-size: 0.9rem;
+      color: #555;
+    }
+
+    .instructions li {
+      margin-bottom: 6px;
+    }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 12px 24px;
+      font-size: 1rem;
+      font-weight: 600;
+      text-align: center;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: #007bff;
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: #0056b3;
+    }
+
+    .btn-primary:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+    }
+
+    .btn-success {
+      background: #28a745;
+      color: #fff;
+    }
+
+    .timer {
+      text-align: center;
+      font-size: 0.85rem;
+      color: #666;
+      margin-top: 8px;
+    }
+
+    .region-select {
+      margin-bottom: 16px;
+    }
+
+    .region-select label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: 500;
+    }
+
+    .region-select select {
+      width: 100%;
+      padding: 10px;
+      font-size: 1rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      background: #fff;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid #fff;
+      border-radius: 50%;
+      border-top-color: transparent;
+      animation: spin 1s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Initial State: Start Linking -->
+    <div id="start-view" class="card">
+      <h1>🔗 Link Tuya Account</h1>
+      
+      <div class="region-select">
+        <label for="region">Select Region:</label>
+        <select id="region">
+          <option value="US">United States</option>
+          <option value="EU">Europe</option>
+          <option value="CN">China</option>
+          <option value="IN">India</option>
+        </select>
+      </div>
+
+      <div class="instructions">
+        <h3>Before you start:</h3>
+        <ol>
+          <li>Open the <strong>Tuya Smart</strong> or <strong>Smart Life</strong> app</li>
+          <li>Make sure your devices are set up in the app</li>
+          <li>Click the button below to generate a QR code</li>
+        </ol>
+      </div>
+
+      <button id="start-btn" class="btn btn-primary" onclick="startLinking()">
+        Generate QR Code
+      </button>
+    </div>
+
+    <!-- QR Code View -->
+    <div id="qr-view" class="card hidden">
+      <h1>📱 Scan QR Code</h1>
+      
+      <div class="qr-container">
+        <img id="qr-image" src="" alt="QR Code">
+      </div>
+
+      <div id="status" class="status pending">
+        Waiting for you to scan...
+      </div>
+
+      <div class="timer" id="timer"></div>
+
+      <div class="instructions">
+        <h3>To complete linking:</h3>
+        <ol>
+          <li>Open <strong>Tuya Smart</strong> or <strong>Smart Life</strong> app</li>
+          <li>Tap the <strong>+</strong> button (Add Device)</li>
+          <li>Select <strong>Scan</strong> (QR code icon)</li>
+          <li>Scan this QR code</li>
+          <li>Confirm authorization in the app</li>
+        </ol>
+      </div>
+
+      <button id="retry-btn" class="btn btn-primary hidden" onclick="startLinking()">
+        Generate New QR Code
+      </button>
+    </div>
+
+    <!-- Success View -->
+    <div id="success-view" class="card hidden">
+      <h1>✅ Account Linked!</h1>
+      
+      <div class="status authorized">
+        Your Tuya account has been successfully linked.
+      </div>
+
+      <p style="text-align: center; margin: 16px 0; color: #666;">
+        Close this window and restart Homebridge to discover your devices.
+      </p>
+
+      <button class="btn btn-success" onclick="window.location.reload()">
+        Done
+      </button>
+    </div>
+  </div>
+
+  <script>
+    let pollingInterval = null;
+    let expiresAt = null;
+    let timerInterval = null;
+
+    async function startLinking() {
+      const startBtn = document.getElementById('start-btn');
+      const retryBtn = document.getElementById('retry-btn');
+      
+      startBtn.disabled = true;
+      startBtn.innerHTML = '<span class="spinner"></span>Generating...';
+      retryBtn.classList.add('hidden');
+
+      try {
+        const region = document.getElementById('region').value;
+        const response = await homebridge.request('/start-linking', { region });
+
+        if (!response.success) {
+          throw new Error(response.error || 'Failed to generate QR code');
+        }
+
+        // Show QR code
+        document.getElementById('qr-image').src = response.qrImage;
+        document.getElementById('start-view').classList.add('hidden');
+        document.getElementById('qr-view').classList.remove('hidden');
+
+        // Start countdown
+        expiresAt = Date.now() + response.expiresIn * 1000;
+        updateTimer();
+        timerInterval = setInterval(updateTimer, 1000);
+
+        // Start polling
+        pollingInterval = setInterval(checkStatus, 2000);
+      } catch (error) {
+        alert('Error: ' + error.message);
+        startBtn.disabled = false;
+        startBtn.textContent = 'Generate QR Code';
+      }
+    }
+
+    async function checkStatus() {
+      try {
+        const response = await homebridge.request('/check-status');
+
+        if (!response.success) {
+          console.error('Check status error:', response.error);
+          return;
+        }
+
+        const statusEl = document.getElementById('status');
+
+        switch (response.status) {
+          case 'pending':
+            statusEl.className = 'status pending';
+            statusEl.textContent = 'Waiting for you to scan...';
+            break;
+
+          case 'scanned':
+            statusEl.className = 'status scanned';
+            statusEl.textContent = 'QR code scanned! Confirm in your app...';
+            break;
+
+          case 'authorized':
+            clearInterval(pollingInterval);
+            clearInterval(timerInterval);
+            
+            // Save tokens to config
+            await saveTokens(response.tokens);
+            
+            // Show success
+            document.getElementById('qr-view').classList.add('hidden');
+            document.getElementById('success-view').classList.remove('hidden');
+            break;
+
+          case 'expired':
+            clearInterval(pollingInterval);
+            clearInterval(timerInterval);
+            statusEl.className = 'status expired';
+            statusEl.textContent = 'QR code expired. Please try again.';
+            document.getElementById('retry-btn').classList.remove('hidden');
+            break;
+        }
+      } catch (error) {
+        console.error('Polling error:', error);
+      }
+    }
+
+    async function saveTokens(tokens) {
+      try {
+        // Get current config
+        const configResponse = await homebridge.request('/get-config');
+        const config = configResponse.config || {};
+
+        // Update with tokens
+        config.tokens = tokens;
+        config.region = document.getElementById('region').value;
+
+        // Save config
+        await homebridge.updatePluginConfig([config]);
+        await homebridge.savePluginConfig();
+      } catch (error) {
+        console.error('Failed to save config:', error);
+        alert('Failed to save configuration. Please try again.');
+      }
+    }
+
+    function updateTimer() {
+      const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      const minutes = Math.floor(remaining / 60);
+      const seconds = remaining % 60;
+      
+      document.getElementById('timer').textContent = 
+        `Expires in ${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+      if (remaining <= 0) {
+        clearInterval(timerInterval);
+        const statusEl = document.getElementById('status');
+        statusEl.className = 'status expired';
+        statusEl.textContent = 'QR code expired. Please try again.';
+        document.getElementById('retry-btn').classList.remove('hidden');
+        clearInterval(pollingInterval);
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,9 +1,9 @@
 /**
- * This is the name of the platform that users will use to register the plugin in the Homebridge config.json
+ * Homebridge Tuya Plugin Settings
  */
-export const PLATFORM_NAME = 'ExampleHomebridgePlugin';
 
-/**
- * This must match the name of your plugin as defined the package.json `name` property
- */
-export const PLUGIN_NAME = 'homebridge-plugin-name';
+// Plugin name as used in the Homebridge config
+export const PLUGIN_NAME = 'homebridge-tuya';
+
+// Platform name as shown in the Homebridge UI
+export const PLATFORM_NAME = 'TuyaPlatform';

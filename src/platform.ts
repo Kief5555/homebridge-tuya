@@ -1,150 +1,225 @@
 import type { API, Characteristic, DynamicPlatformPlugin, Logging, PlatformAccessory, PlatformConfig, Service } from 'homebridge';
 
-import { ExamplePlatformAccessory } from './platformAccessory.js';
+import { TuyaAccessory } from './platformAccessory.js';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
+import { 
+  TuyaOpenAPI, 
+  TuyaLinkingAuth, 
+  TuyaDeviceAPI, 
+  TuyaDevice, 
+  TuyaTokens,
+  TuyaRegion,
+} from './api/index.js';
 
-// This is only required when using Custom Services and Characteristics not support by HomeKit
-import { EveHomeKitTypes } from 'homebridge-lib/EveHomeKitTypes';
+export interface TuyaPlatformConfig extends PlatformConfig {
+  region?: TuyaRegion;
+  tokens?: TuyaTokens;
+  pollingInterval?: number;
+  hiddenAccessories?: string[];
+  debug?: boolean;
+}
 
 /**
- * HomebridgePlatform
- * This class is the main constructor for your plugin, this is where you should
- * parse the user config and discover/register accessories with Homebridge.
+ * TuyaPlatform
+ * Main platform class for the Homebridge Tuya plugin.
+ * Handles device discovery and accessory registration.
  */
-export class ExampleHomebridgePlatform implements DynamicPlatformPlugin {
+export class TuyaPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
   public readonly Characteristic: typeof Characteristic;
 
-  // this is used to track restored cached accessories
+  // Track restored cached accessories
   public readonly accessories: Map<string, PlatformAccessory> = new Map();
   public readonly discoveredCacheUUIDs: string[] = [];
 
-  // This is only required when using Custom Services and Characteristics not support by HomeKit
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public readonly CustomServices: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public readonly CustomCharacteristics: any;
+  // Tuya API instances
+  private api!: TuyaOpenAPI;
+  private deviceApi!: TuyaDeviceAPI;
+  private linkingAuth!: TuyaLinkingAuth;
+
+  // Polling timer
+  private pollingTimer?: NodeJS.Timeout;
 
   constructor(
     public readonly log: Logging,
-    public readonly config: PlatformConfig,
-    public readonly api: API,
+    public readonly config: TuyaPlatformConfig,
+    public readonly hbApi: API,
   ) {
-    this.Service = api.hap.Service;
-    this.Characteristic = api.hap.Characteristic;
+    this.Service = hbApi.hap.Service;
+    this.Characteristic = hbApi.hap.Characteristic;
 
-    // This is only required when using Custom Services and Characteristics not support by HomeKit
-    this.CustomServices = new EveHomeKitTypes(this.api).Services;
-    this.CustomCharacteristics = new EveHomeKitTypes(this.api).Characteristics;
+    this.log.debug('Initializing Tuya platform...');
 
-    this.log.debug('Finished initializing platform:', this.config.name);
+    // Initialize Tuya API with config
+    this.initializeApi();
 
-    // When this event is fired it means Homebridge has restored all cached accessories from disk.
-    // Dynamic Platform plugins should only register new accessories after this event was fired,
-    // in order to ensure they weren't added to homebridge already. This event can also be used
-    // to start discovery of new accessories.
-    this.api.on('didFinishLaunching', () => {
-      log.debug('Executed didFinishLaunching callback');
-      // run the method to discover / register your devices as accessories
+    // When Homebridge has restored cached accessories
+    this.hbApi.on('didFinishLaunching', () => {
+      this.log.debug('Homebridge finished launching');
       this.discoverDevices();
+    });
+
+    // Clean up on shutdown
+    this.hbApi.on('shutdown', () => {
+      this.destroy();
     });
   }
 
   /**
-   * This function is invoked when homebridge restores cached accessories from disk at startup.
-   * It should be used to set up event handlers for characteristics and update respective values.
+   * Initialize the Tuya API client
    */
-  configureAccessory(accessory: PlatformAccessory) {
-    this.log.info('Loading accessory from cache:', accessory.displayName);
+  private initializeApi(): void {
+    const region = this.config.region || 'US';
 
-    // add the restored accessory to the accessories cache, so we can track if it has already been registered
+    // Create API instances - no credentials needed!
+    this.api = new TuyaOpenAPI(region, this.log);
+    this.deviceApi = new TuyaDeviceAPI(this.api, this.log);
+    this.linkingAuth = new TuyaLinkingAuth(region, this.log);
+
+    // Restore tokens if available
+    if (this.config.tokens?.accessToken) {
+      this.log.debug('Restoring saved tokens');
+      this.api.setTokens(this.config.tokens);
+    }
+  }
+
+  /**
+   * Get API instances for custom UI
+   */
+  public getApi(): TuyaOpenAPI {
+    return this.api;
+  }
+
+  public getLinkingAuth(): TuyaLinkingAuth {
+    return this.linkingAuth;
+  }
+
+  /**
+   * This function is invoked when homebridge restores cached accessories from disk at startup.
+   */
+  configureAccessory(accessory: PlatformAccessory): void {
+    this.log.info('Loading accessory from cache:', accessory.displayName);
     this.accessories.set(accessory.UUID, accessory);
   }
 
   /**
-   * This is an example method showing how to register discovered accessories.
-   * Accessories must only be registered once, previously created accessories
-   * must not be registered again to prevent "duplicate UUID" errors.
+   * Discover and register Tuya devices
    */
-  discoverDevices() {
-    // EXAMPLE ONLY
-    // A real plugin you would discover accessories from the local network, cloud services
-    // or a user-defined array in the platform config.
-    const exampleDevices = [
-      {
-        exampleUniqueId: 'ABCD',
-        exampleDisplayName: 'Bedroom',
-      },
-      {
-        exampleUniqueId: 'EFGH',
-        exampleDisplayName: 'Kitchen',
-      },
-      {
-        // This is an example of a device which uses a Custom Service
-        exampleUniqueId: 'IJKL',
-        exampleDisplayName: 'Backyard',
-        CustomService: 'AirPressureSensor',
-      },
-    ];
-
-    // loop over the discovered devices and register each one if it has not already been registered
-    for (const device of exampleDevices) {
-      // generate a unique id for the accessory this should be generated from
-      // something globally unique, but constant, for example, the device serial
-      // number or MAC address
-      const uuid = this.api.hap.uuid.generate(device.exampleUniqueId);
-
-      // see if an accessory with the same uuid has already been registered and restored from
-      // the cached devices we stored in the `configureAccessory` method above
-      const existingAccessory = this.accessories.get(uuid);
-
-      if (existingAccessory) {
-        // the accessory already exists
-        this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
-
-        // if you need to update the accessory.context then you should run `api.updatePlatformAccessories`. e.g.:
-        // existingAccessory.context.device = device;
-        // this.api.updatePlatformAccessories([existingAccessory]);
-
-        // create the accessory handler for the restored accessory
-        // this is imported from `platformAccessory.ts`
-        new ExamplePlatformAccessory(this, existingAccessory);
-
-        // it is possible to remove platform accessories at any time using `api.unregisterPlatformAccessories`, e.g.:
-        // remove platform accessories when no longer present
-        // this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
-        // this.log.info('Removing existing accessory from cache:', existingAccessory.displayName);
-      } else {
-        // the accessory does not yet exist, so we need to create it
-        this.log.info('Adding new accessory:', device.exampleDisplayName);
-
-        // create a new accessory
-        const accessory = new this.api.platformAccessory(device.exampleDisplayName, uuid);
-
-        // store a copy of the device object in the `accessory.context`
-        // the `context` property can be used to store any data about the accessory you may need
-        accessory.context.device = device;
-
-        // create the accessory handler for the newly create accessory
-        // this is imported from `platformAccessory.ts`
-        new ExamplePlatformAccessory(this, accessory);
-
-        // link the accessory to your platform
-        this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-      }
-
-      // push into discoveredCacheUUIDs
-      this.discoveredCacheUUIDs.push(uuid);
+  async discoverDevices(): Promise<void> {
+    // Check if we have valid tokens
+    if (!this.api.hasValidTokens()) {
+      this.log.warn('╔════════════════════════════════════════════════════════════════╗');
+      this.log.warn('║                   TUYA ACCOUNT NOT LINKED                      ║');
+      this.log.warn('╠════════════════════════════════════════════════════════════════╣');
+      this.log.warn('║  Please link your Tuya account using the Homebridge Config UI. ║');
+      this.log.warn('║  1. Open Homebridge Config UI                                  ║');
+      this.log.warn('║  2. Go to Plugins → Tuya → Settings                            ║');
+      this.log.warn('║  3. Click "Link Tuya Account"                                  ║');
+      this.log.warn('║  4. Scan the QR code with your Tuya/Smart Life app             ║');
+      this.log.warn('╚════════════════════════════════════════════════════════════════╝');
+      return;
     }
 
-    // you can also deal with accessories from the cache which are no longer present by removing them from Homebridge
-    // for example, if your plugin logs into a cloud account to retrieve a device list, and a user has previously removed a device
-    // from this cloud account, then this device will no longer be present in the device list but will still be in the Homebridge cache
-    for (const [uuid, accessory] of this.accessories) {
-      if (!this.discoveredCacheUUIDs.includes(uuid)) {
-        this.log.info('Removing existing accessory from cache:', accessory.displayName);
-        this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+    try {
+      this.log.info('Discovering Tuya devices...');
+      const devices = await this.deviceApi.getDeviceList();
+      
+      this.log.info(`Found ${devices.length} device(s)`);
+
+      for (const device of devices) {
+        // Check if device is hidden
+        if (this.isDeviceHidden(device)) {
+          this.log.debug('Skipping hidden device:', device.name);
+          continue;
+        }
+
+        // Generate UUID from device ID
+        const uuid = this.hbApi.hap.uuid.generate(device.id);
+        this.discoveredCacheUUIDs.push(uuid);
+
+        // Check if accessory already exists
+        const existingAccessory = this.accessories.get(uuid);
+
+        if (existingAccessory) {
+          // Update existing accessory
+          this.log.info('Restoring existing accessory:', device.name);
+          existingAccessory.context.device = device;
+          new TuyaAccessory(this, existingAccessory, this.deviceApi);
+        } else {
+          // Create new accessory
+          this.log.info('Adding new accessory:', device.name);
+          const accessory = new this.hbApi.platformAccessory(device.name, uuid);
+          accessory.context.device = device;
+          new TuyaAccessory(this, accessory, this.deviceApi);
+          this.hbApi.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+        }
       }
+
+      // Remove accessories that are no longer present
+      for (const [uuid, accessory] of this.accessories) {
+        if (!this.discoveredCacheUUIDs.includes(uuid)) {
+          this.log.info('Removing accessory no longer present:', accessory.displayName);
+          this.hbApi.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+        }
+      }
+
+      // Start polling for status updates
+      this.startPolling();
+
+    } catch (error) {
+      this.log.error('Failed to discover devices:', error);
     }
+  }
+
+  /**
+   * Check if a device should be hidden
+   */
+  private isDeviceHidden(device: TuyaDevice): boolean {
+    if (!this.config.hiddenAccessories) return false;
+    return this.config.hiddenAccessories.some(
+      hidden => hidden === device.id || hidden === device.name
+    );
+  }
+
+  /**
+   * Start polling for device status updates
+   */
+  private startPolling(): void {
+    const interval = (this.config.pollingInterval || 60) * 1000;
+
+    if (this.pollingTimer) {
+      clearInterval(this.pollingTimer);
+    }
+
+    this.log.debug(`Starting polling every ${interval / 1000} seconds`);
+
+    this.pollingTimer = setInterval(async () => {
+      try {
+        const devices = await this.deviceApi.getDeviceList();
+        
+        for (const device of devices) {
+          const uuid = this.hbApi.hap.uuid.generate(device.id);
+          const accessory = this.accessories.get(uuid);
+          
+          if (accessory) {
+            accessory.context.device = device;
+            this.hbApi.updatePlatformAccessories([accessory]);
+          }
+        }
+      } catch (error) {
+        this.log.error('Polling failed:', error);
+      }
+    }, interval);
+  }
+
+  /**
+   * Clean up resources
+   */
+  private destroy(): void {
+    if (this.pollingTimer) {
+      clearInterval(this.pollingTimer);
+    }
+    this.api?.destroy();
+    this.linkingAuth?.destroy();
   }
 }

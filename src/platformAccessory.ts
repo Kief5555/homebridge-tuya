@@ -1,148 +1,413 @@
-import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
-
-import type { ExampleHomebridgePlatform } from './platform.js';
+import type { API, Characteristic, CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
+import type { TuyaPlatform } from './platform.js';
+import { TuyaDeviceAPI, TuyaDevice, TuyaDeviceStatus, DEVICE_CATEGORIES } from './api/index.js';
 
 /**
- * Platform Accessory
- * An instance of this class is created for each accessory your platform registers
- * Each accessory may expose multiple services of different service types.
+ * TuyaAccessory
+ * An accessory handler for a single Tuya device.
+ * Handles communication between HomeKit and the Tuya device.
  */
-export class ExamplePlatformAccessory {
-  private service: Service;
-
-  /**
-   * These are just used to create a working example
-   * You should implement your own code to track the state of your accessory
-   */
-  private exampleStates = {
-    On: false,
-    Brightness: 100,
-  };
+export class TuyaAccessory {
+  private service!: Service;
+  private device: TuyaDevice;
 
   constructor(
-    private readonly platform: ExampleHomebridgePlatform,
+    private readonly platform: TuyaPlatform,
     private readonly accessory: PlatformAccessory,
+    private readonly deviceApi: TuyaDeviceAPI,
   ) {
-    // set accessory information
+    this.device = accessory.context.device as TuyaDevice;
+
+    // Set accessory information
     this.accessory.getService(this.platform.Service.AccessoryInformation)!
-      .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Default-Manufacturer')
-      .setCharacteristic(this.platform.Characteristic.Model, 'Default-Model')
-      .setCharacteristic(this.platform.Characteristic.SerialNumber, 'Default-Serial');
+      .setCharacteristic(this.platform.Characteristic.Manufacturer, 'Tuya')
+      .setCharacteristic(this.platform.Characteristic.Model, this.device.product_name || this.device.category)
+      .setCharacteristic(this.platform.Characteristic.SerialNumber, this.device.id);
 
-    // get the LightBulb service if it exists, otherwise create a new LightBulb service
-    // you can create multiple services for each accessory
+    // Create the appropriate service based on device category
+    this.setupService();
+  }
 
-    if (accessory.context.device.CustomService) {
-      // This is only required when using Custom Services and Characteristics not support by HomeKit
-      this.service = this.accessory.getService(this.platform.CustomServices[accessory.context.device.CustomService]) ||
-        this.accessory.addService(this.platform.CustomServices[accessory.context.device.CustomService]);
-    } else {
-      this.service = this.accessory.getService(this.platform.Service.Lightbulb) || this.accessory.addService(this.platform.Service.Lightbulb);
+  /**
+   * Set up the HomeKit service based on device category
+   */
+  private setupService(): void {
+    const category = this.device.category;
+    const accessoryType = this.deviceApi.getAccessoryType(category);
+
+    this.platform.log.debug(`Setting up ${this.device.name} as ${accessoryType || 'switch'} (category: ${category})`);
+
+    switch (accessoryType) {
+      case 'light':
+        this.setupLightService();
+        break;
+      case 'outlet':
+        this.setupOutletService();
+        break;
+      case 'fan':
+        this.setupFanService();
+        break;
+      case 'motion_sensor':
+        this.setupMotionSensorService();
+        break;
+      case 'contact_sensor':
+        this.setupContactSensorService();
+        break;
+      case 'temp_sensor':
+        this.setupTemperatureSensorService();
+        break;
+      case 'switch':
+      default:
+        this.setupSwitchService();
+        break;
+    }
+  }
+
+  /**
+   * Set up a switch service
+   */
+  private setupSwitchService(): void {
+    this.service = this.accessory.getService(this.platform.Service.Switch) 
+      || this.accessory.addService(this.platform.Service.Switch);
+
+    this.service.setCharacteristic(this.platform.Characteristic.Name, this.device.name);
+
+    this.service.getCharacteristic(this.platform.Characteristic.On)
+      .onGet(this.getOn.bind(this))
+      .onSet(this.setOn.bind(this));
+  }
+
+  /**
+   * Set up an outlet service
+   */
+  private setupOutletService(): void {
+    this.service = this.accessory.getService(this.platform.Service.Outlet) 
+      || this.accessory.addService(this.platform.Service.Outlet);
+
+    this.service.setCharacteristic(this.platform.Characteristic.Name, this.device.name);
+
+    this.service.getCharacteristic(this.platform.Characteristic.On)
+      .onGet(this.getOn.bind(this))
+      .onSet(this.setOn.bind(this));
+  }
+
+  /**
+   * Set up a light service
+   */
+  private setupLightService(): void {
+    this.service = this.accessory.getService(this.platform.Service.Lightbulb) 
+      || this.accessory.addService(this.platform.Service.Lightbulb);
+
+    this.service.setCharacteristic(this.platform.Characteristic.Name, this.device.name);
+
+    // On/Off
+    this.service.getCharacteristic(this.platform.Characteristic.On)
+      .onGet(this.getOn.bind(this))
+      .onSet(this.setOn.bind(this));
+
+    // Brightness (if supported)
+    if (this.hasStatus('bright_value_v2') || this.hasStatus('bright_value')) {
+      this.service.getCharacteristic(this.platform.Characteristic.Brightness)
+        .onGet(this.getBrightness.bind(this))
+        .onSet(this.setBrightness.bind(this));
     }
 
-    // set the service name, this is what is displayed as the default name on the Home app
-    // in this example we are using the name we stored in the `accessory.context` in the `discoverDevices` method.
-    this.service.setCharacteristic(this.platform.Characteristic.Name, accessory.context.device.exampleDisplayName);
+    // Color Temperature (if supported)
+    if (this.hasStatus('temp_value_v2') || this.hasStatus('temp_value')) {
+      this.service.getCharacteristic(this.platform.Characteristic.ColorTemperature)
+        .onGet(this.getColorTemperature.bind(this))
+        .onSet(this.setColorTemperature.bind(this));
+    }
 
-    // each service must implement at-minimum the "required characteristics" for the given service type
-    // see https://developers.homebridge.io/#/service/Lightbulb
+    // Hue and Saturation (if RGB supported)
+    if (this.hasStatus('colour_data_v2') || this.hasStatus('colour_data')) {
+      this.service.getCharacteristic(this.platform.Characteristic.Hue)
+        .onGet(this.getHue.bind(this))
+        .onSet(this.setHue.bind(this));
 
-    // register handlers for the On/Off Characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.On)
-      .onSet(this.setOn.bind(this)) // SET - bind to the `setOn` method below
-      .onGet(this.getOn.bind(this)); // GET - bind to the `getOn` method below
-
-    // register handlers for the Brightness Characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.Brightness)
-      .onSet(this.setBrightness.bind(this)); // SET - bind to the `setBrightness` method below
-
-    /**
-     * Creating multiple services of the same type.
-     *
-     * To avoid "Cannot add a Service with the same UUID another Service without also defining a unique 'subtype' property." error,
-     * when creating multiple services of the same type, you need to use the following syntax to specify a name and subtype id:
-     * this.accessory.getService('NAME') || this.accessory.addService(this.platform.Service.Lightbulb, 'NAME', 'USER_DEFINED_SUBTYPE_ID');
-     *
-     * The USER_DEFINED_SUBTYPE must be unique to the platform accessory (if you platform exposes multiple accessories, each accessory
-     * can use the same subtype id.)
-     */
-
-    // Example: add two "motion sensor" services to the accessory
-    const motionSensorOneService = this.accessory.getService('Motion Sensor One Name')
-      || this.accessory.addService(this.platform.Service.MotionSensor, 'Motion Sensor One Name', 'YourUniqueIdentifier-1');
-
-    const motionSensorTwoService = this.accessory.getService('Motion Sensor Two Name')
-      || this.accessory.addService(this.platform.Service.MotionSensor, 'Motion Sensor Two Name', 'YourUniqueIdentifier-2');
-
-    /**
-     * Updating characteristics values asynchronously.
-     *
-     * Example showing how to update the state of a Characteristic asynchronously instead
-     * of using the `on('get')` handlers.
-     * Here we change update the motion sensor trigger states on and off every 10 seconds
-     * the `updateCharacteristic` method.
-     *
-     */
-    let motionDetected = false;
-    setInterval(() => {
-      // EXAMPLE - inverse the trigger
-      motionDetected = !motionDetected;
-
-      // push the new value to HomeKit
-      motionSensorOneService.updateCharacteristic(this.platform.Characteristic.MotionDetected, motionDetected);
-      motionSensorTwoService.updateCharacteristic(this.platform.Characteristic.MotionDetected, !motionDetected);
-
-      this.platform.log.debug('Triggering motionSensorOneService:', motionDetected);
-      this.platform.log.debug('Triggering motionSensorTwoService:', !motionDetected);
-    }, 10000);
+      this.service.getCharacteristic(this.platform.Characteristic.Saturation)
+        .onGet(this.getSaturation.bind(this))
+        .onSet(this.setSaturation.bind(this));
+    }
   }
 
   /**
-   * Handle "SET" requests from HomeKit
-   * These are sent when the user changes the state of an accessory, for example, turning on a Light bulb.
+   * Set up a fan service
    */
-  async setOn(value: CharacteristicValue) {
-    // implement your own code to turn your device on/off
-    this.exampleStates.On = value as boolean;
+  private setupFanService(): void {
+    this.service = this.accessory.getService(this.platform.Service.Fanv2) 
+      || this.accessory.addService(this.platform.Service.Fanv2);
 
-    this.platform.log.debug('Set Characteristic On ->', value);
+    this.service.setCharacteristic(this.platform.Characteristic.Name, this.device.name);
+
+    this.service.getCharacteristic(this.platform.Characteristic.Active)
+      .onGet(this.getActive.bind(this))
+      .onSet(this.setActive.bind(this));
+
+    // Speed (if supported)
+    if (this.hasStatus('fan_speed_percent') || this.hasStatus('speed')) {
+      this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed)
+        .onGet(this.getFanSpeed.bind(this))
+        .onSet(this.setFanSpeed.bind(this));
+    }
   }
 
   /**
-   * Handle the "GET" requests from HomeKit
-   * These are sent when HomeKit wants to know the current state of the accessory, for example, checking if a Light bulb is on.
-   *
-   * GET requests should return as fast as possible. A long delay here will result in
-   * HomeKit being unresponsive and a bad user experience in general.
-   *
-   * If your device takes time to respond you should update the status of your device
-   * asynchronously instead using the `updateCharacteristic` method instead.
-   * In this case, you may decide not to implement `onGet` handlers, which may speed up
-   * the responsiveness of your device in the Home app.
+   * Set up motion sensor service
+   */
+  private setupMotionSensorService(): void {
+    this.service = this.accessory.getService(this.platform.Service.MotionSensor) 
+      || this.accessory.addService(this.platform.Service.MotionSensor);
 
-   * @example
-   * this.service.updateCharacteristic(this.platform.Characteristic.On, true)
+    this.service.setCharacteristic(this.platform.Characteristic.Name, this.device.name);
+
+    this.service.getCharacteristic(this.platform.Characteristic.MotionDetected)
+      .onGet(this.getMotionDetected.bind(this));
+  }
+
+  /**
+   * Set up contact sensor service
+   */
+  private setupContactSensorService(): void {
+    this.service = this.accessory.getService(this.platform.Service.ContactSensor) 
+      || this.accessory.addService(this.platform.Service.ContactSensor);
+
+    this.service.setCharacteristic(this.platform.Characteristic.Name, this.device.name);
+
+    this.service.getCharacteristic(this.platform.Characteristic.ContactSensorState)
+      .onGet(this.getContactState.bind(this));
+  }
+
+  /**
+   * Set up temperature sensor service
+   */
+  private setupTemperatureSensorService(): void {
+    this.service = this.accessory.getService(this.platform.Service.TemperatureSensor) 
+      || this.accessory.addService(this.platform.Service.TemperatureSensor);
+
+    this.service.setCharacteristic(this.platform.Characteristic.Name, this.device.name);
+
+    this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
+      .onGet(this.getTemperature.bind(this));
+  }
+
+  // ============ Characteristic Handlers ============
+
+  /**
+   * Get device status value by code
+   */
+  private getStatusValue(code: string): boolean | number | string | undefined {
+    const status = this.device.status?.find(s => s.code === code);
+    return status?.value;
+  }
+
+  /**
+   * Check if device has a specific status code
+   */
+  private hasStatus(code: string): boolean {
+    return this.device.status?.some(s => s.code === code) ?? false;
+  }
+
+  /**
+   * Get On/Off state
    */
   async getOn(): Promise<CharacteristicValue> {
-    // implement your own code to check if the device is on
-    const isOn = this.exampleStates.On;
-
-    this.platform.log.debug('Get Characteristic On ->', isOn);
-
-    // if you need to return an error to show the device as "Not Responding" in the Home app:
-    // throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-
-    return isOn;
+    // Try various power status codes
+    const codes = ['switch_led', 'switch_1', 'switch', 'power'];
+    for (const code of codes) {
+      const value = this.getStatusValue(code);
+      if (typeof value === 'boolean') {
+        return value;
+      }
+    }
+    return this.device.online;
   }
 
   /**
-   * Handle "SET" requests from HomeKit
-   * These are sent when the user changes the state of an accessory, for example, changing the Brightness
+   * Set On/Off state
    */
-  async setBrightness(value: CharacteristicValue) {
-    // implement your own code to set the brightness
-    this.exampleStates.Brightness = value as number;
+  async setOn(value: CharacteristicValue): Promise<void> {
+    this.platform.log.debug(`Setting ${this.device.name} power to ${value}`);
+    
+    const codes = ['switch_led', 'switch_1', 'switch', 'power'];
+    for (const code of codes) {
+      if (this.hasStatus(code)) {
+        await this.deviceApi.sendCommands(this.device.id, [{ code, value: value as boolean }]);
+        return;
+      }
+    }
+    
+    // Default to switch_led
+    await this.deviceApi.sendCommands(this.device.id, [{ code: 'switch_led', value: value as boolean }]);
+  }
 
-    this.platform.log.debug('Set Characteristic Brightness -> ', value);
+  /**
+   * Get brightness (0-100)
+   */
+  async getBrightness(): Promise<CharacteristicValue> {
+    const value = this.getStatusValue('bright_value_v2') ?? this.getStatusValue('bright_value');
+    if (typeof value === 'number') {
+      // Tuya uses 10-1000 scale
+      return Math.round(value / 10);
+    }
+    return 100;
+  }
+
+  /**
+   * Set brightness (0-100)
+   */
+  async setBrightness(value: CharacteristicValue): Promise<void> {
+    this.platform.log.debug(`Setting ${this.device.name} brightness to ${value}`);
+    const tuyaValue = Math.round((value as number) * 10);
+    const code = this.hasStatus('bright_value_v2') ? 'bright_value_v2' : 'bright_value';
+    await this.deviceApi.sendCommands(this.device.id, [{ code, value: tuyaValue }]);
+  }
+
+  /**
+   * Get color temperature (in mireds, 140-500)
+   */
+  async getColorTemperature(): Promise<CharacteristicValue> {
+    const value = this.getStatusValue('temp_value_v2') ?? this.getStatusValue('temp_value');
+    if (typeof value === 'number') {
+      // Convert from Tuya 0-1000 to mireds (140-500)
+      const kelvin = 2700 + (value / 1000) * (6500 - 2700);
+      return Math.round(1000000 / kelvin);
+    }
+    return 300; // default ~3333K
+  }
+
+  /**
+   * Set color temperature (in mireds)
+   */
+  async setColorTemperature(value: CharacteristicValue): Promise<void> {
+    this.platform.log.debug(`Setting ${this.device.name} color temp to ${value} mireds`);
+    const kelvin = 1000000 / (value as number);
+    const tuyaValue = Math.round(((kelvin - 2700) / (6500 - 2700)) * 1000);
+    const code = this.hasStatus('temp_value_v2') ? 'temp_value_v2' : 'temp_value';
+    await this.deviceApi.sendCommands(this.device.id, [{ code, value: Math.max(0, Math.min(1000, tuyaValue)) }]);
+  }
+
+  private cachedHue = 0;
+  private cachedSaturation = 0;
+
+  /**
+   * Get hue (0-360)
+   */
+  async getHue(): Promise<CharacteristicValue> {
+    const colorData = this.getColorData();
+    return colorData?.h ?? 0;
+  }
+
+  /**
+   * Set hue
+   */
+  async setHue(value: CharacteristicValue): Promise<void> {
+    this.cachedHue = value as number;
+    await this.setColor();
+  }
+
+  /**
+   * Get saturation (0-100)
+   */
+  async getSaturation(): Promise<CharacteristicValue> {
+    const colorData = this.getColorData();
+    return colorData ? colorData.s / 10 : 0;
+  }
+
+  /**
+   * Set saturation
+   */
+  async setSaturation(value: CharacteristicValue): Promise<void> {
+    this.cachedSaturation = value as number;
+    await this.setColor();
+  }
+
+  /**
+   * Parse Tuya color data
+   */
+  private getColorData(): { h: number; s: number; v: number } | undefined {
+    const value = this.getStatusValue('colour_data_v2') ?? this.getStatusValue('colour_data');
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Set color using cached hue/saturation values
+   */
+  private async setColor(): Promise<void> {
+    const colorValue = JSON.stringify({
+      h: this.cachedHue,
+      s: Math.round(this.cachedSaturation * 10),
+      v: 1000, // full value
+    });
+    const code = this.hasStatus('colour_data_v2') ? 'colour_data_v2' : 'colour_data';
+    await this.deviceApi.sendCommands(this.device.id, [{ code, value: colorValue }]);
+  }
+
+  /**
+   * Get fan active state
+   */
+  async getActive(): Promise<CharacteristicValue> {
+    const isOn = await this.getOn();
+    return isOn ? 1 : 0;
+  }
+
+  /**
+   * Set fan active state
+   */
+  async setActive(value: CharacteristicValue): Promise<void> {
+    await this.setOn(value === 1);
+  }
+
+  /**
+   * Get fan speed (0-100)
+   */
+  async getFanSpeed(): Promise<CharacteristicValue> {
+    const value = this.getStatusValue('fan_speed_percent') ?? this.getStatusValue('speed');
+    return (value as number) ?? 50;
+  }
+
+  /**
+   * Set fan speed (0-100)
+   */
+  async setFanSpeed(value: CharacteristicValue): Promise<void> {
+    const code = this.hasStatus('fan_speed_percent') ? 'fan_speed_percent' : 'speed';
+    await this.deviceApi.sendCommands(this.device.id, [{ code, value: value as number }]);
+  }
+
+  /**
+   * Get motion detected state
+   */
+  async getMotionDetected(): Promise<CharacteristicValue> {
+    const value = this.getStatusValue('pir');
+    return typeof value === 'string' ? value === 'pir' : !!value;
+  }
+
+  /**
+   * Get contact sensor state
+   */
+  async getContactState(): Promise<CharacteristicValue> {
+    const value = this.getStatusValue('doorcontact_state');
+    // true = open = CONTACT_NOT_DETECTED (1)
+    // false = closed = CONTACT_DETECTED (0)
+    return value ? 1 : 0;
+  }
+
+  /**
+   * Get temperature (in Celsius)
+   */
+  async getTemperature(): Promise<CharacteristicValue> {
+    const value = this.getStatusValue('va_temperature') ?? this.getStatusValue('temp_current');
+    if (typeof value === 'number') {
+      // Some devices report in tenths of degrees
+      return value > 100 ? value / 10 : value;
+    }
+    return 20;
   }
 }

@@ -1,18 +1,106 @@
 {
-  "pluginAlias": "ExampleHomebridgePlugin",
+  "pluginAlias": "TuyaPlatform",
   "pluginType": "platform",
   "singular": true,
   "strictValidation": false,
+  "customUi": true,
   "schema": {
     "type": "object",
-    "required": ["name"],
-    "additionalProperties": false,
+    "required": [
+      "name",
+      "region"
+    ],
     "properties": {
       "name": {
         "title": "Name",
         "type": "string",
-        "default": "Example Dynamic Platform"
+        "default": "Tuya"
+      },
+      "region": {
+        "title": "Region",
+        "type": "string",
+        "enum": [
+          "US",
+          "EU",
+          "CN",
+          "IN"
+        ],
+        "default": "US",
+        "description": "Select the region closest to you. This determines which Tuya data center to use."
+      },
+      "accessId": {
+        "title": "Access ID",
+        "type": "string",
+        "description": "Your Tuya IoT Platform Access ID (optional, for advanced users)"
+      },
+      "accessSecret": {
+        "title": "Access Secret",
+        "type": "string",
+        "description": "Your Tuya IoT Platform Access Secret (optional, for advanced users)"
+      },
+      "tokens": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          },
+          "expiresIn": {
+            "type": "number"
+          },
+          "expiresAt": {
+            "type": "number"
+          },
+          "uid": {
+            "type": "string"
+          }
+        }
+      },
+      "pollingInterval": {
+        "title": "Polling Interval (seconds)",
+        "type": "integer",
+        "minimum": 30,
+        "maximum": 3600,
+        "default": 60,
+        "description": "How often to poll Tuya for device status updates (in seconds)"
+      },
+      "hiddenAccessories": {
+        "title": "Hidden Accessories",
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Device IDs or names to hide from HomeKit"
+      },
+      "debug": {
+        "title": "Debug Mode",
+        "type": "boolean",
+        "default": false,
+        "description": "Enable verbose logging for troubleshooting"
       }
     }
-  }
+  },
+  "layout": [
+    {
+      "type": "fieldset",
+      "title": "Basic Settings",
+      "items": [
+        "name",
+        "region"
+      ]
+    },
+    {
+      "type": "fieldset",
+      "title": "Advanced Settings",
+      "expandable": true,
+      "expanded": false,
+      "items": [
+        "pollingInterval",
+        "hiddenAccessories",
+        "debug"
+      ]
+    }
+  ]
 }
