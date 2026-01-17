@@ -258,9 +258,7 @@ export class TuyaAccessory {
    */
   async setBrightness(value: CharacteristicValue): Promise<void> {
     this.platform.log.debug(`Setting ${this.device.name} brightness to ${value}`);
-    const tuyaValue = Math.round((value as number) * 10);
-    const code = this.hasStatus('bright_value_v2') ? 'bright_value_v2' : 'bright_value';
-    await this.deviceApi.sendCommands(this.device.id, [{ code, value: tuyaValue }]);
+    await this.deviceApi.setBrightness(this.device.id, value as number);
   }
 
   /**
@@ -281,10 +279,9 @@ export class TuyaAccessory {
    */
   async setColorTemperature(value: CharacteristicValue): Promise<void> {
     this.platform.log.debug(`Setting ${this.device.name} color temp to ${value} mireds`);
-    const kelvin = 1000000 / (value as number);
-    const tuyaValue = Math.round(((kelvin - 2700) / (6500 - 2700)) * 1000);
-    const code = this.hasStatus('temp_value_v2') ? 'temp_value_v2' : 'temp_value';
-    await this.deviceApi.sendCommands(this.device.id, [{ code, value: Math.max(0, Math.min(1000, tuyaValue)) }]);
+    // Convert mireds to Kelvin
+    const kelvin = Math.round(1000000 / (value as number));
+    await this.deviceApi.setColorTemperature(this.device.id, kelvin);
   }
 
   private cachedHue = 0;
@@ -340,14 +337,22 @@ export class TuyaAccessory {
   /**
    * Set color using cached hue/saturation values
    */
+  /**
+   * Set color using cached hue/saturation values
+   */
   private async setColor(): Promise<void> {
-    const colorValue = JSON.stringify({
-      h: this.cachedHue,
-      s: Math.round(this.cachedSaturation * 10),
-      v: 1000, // full value
-    });
-    const code = this.hasStatus('colour_data_v2') ? 'colour_data_v2' : 'colour_data';
-    await this.deviceApi.sendCommands(this.device.id, [{ code, value: colorValue }]);
+    // Current TuyaDeviceAPI.setColor takes h(0-360), s(0-100), v(0-100)
+    // We assume full brightness (100) for color setting as per original logic implicit behavior (v=1000 on V2 scale)
+    // But ideally we should use current brightness if tracking it, or just 100.
+    // The original code passed v: 1000 (which is 100% on V2). 
+    // So passing 100 to deviceApi.setColor is correct.
+    
+    await this.deviceApi.setColor(
+      this.device.id, 
+      this.cachedHue, 
+      this.cachedSaturation, 
+      100,
+    );
   }
 
   /**
