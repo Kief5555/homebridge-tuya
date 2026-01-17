@@ -102,14 +102,14 @@ export class TuyaDeviceAPI {
     
     this.log?.debug('Checking Mobile API availability...');
     if (this.mobileApi) {
-        const mobileTokens = this.mobileApi.getTokens();
-        this.log?.debug('Mobile API instance present. Tokens:', mobileTokens ? 'Yes' : 'No');
-        if (mobileTokens) {
-            this.log?.debug('Mobile Tokens:', JSON.stringify(mobileTokens));
-            return this.getDeviceListMobile();
-        }
+      const mobileTokens = this.mobileApi.getTokens();
+      this.log?.debug('Mobile API instance present. Tokens:', mobileTokens ? 'Yes' : 'No');
+      if (mobileTokens) {
+        this.log?.debug('Mobile Tokens:', JSON.stringify(mobileTokens));
+        return this.getDeviceListMobile();
+      }
     } else {
-        this.log?.debug('Mobile API instance is UNDEFINED');
+      this.log?.debug('Mobile API instance is UNDEFINED');
     }
 
     if (!tokens?.uid) {
@@ -176,9 +176,70 @@ export class TuyaDeviceAPI {
   }
 
   /**
+   * Helper to get status via Mobile API (reusing detail endpoint)
+   */
+  private async getDeviceStatusMobile(deviceId: string): Promise<TuyaDeviceStatus[]> {
+    const response = await this.mobileApi!.request<unknown>(
+      '/v1.0/m/life/ha/devices/detail',
+      'GET',
+      { devIds: deviceId },
+    );
+
+    if (!response.success || !response.result || !Array.isArray(response.result) || response.result.length === 0) {
+      throw new Error(`Failed to get device status (Mobile): ${response.msg}`);
+    }
+      
+    const device = response.result[0];
+    // Map status object to array if needed?
+    // SDK `_query_devices` logic:
+    // device.status is array in response? 
+    // SDK: for item_status in device.status: code=..., value=...
+    // So response has status as array of objs with code/value.
+    // This matches TuyaDeviceStatus[].
+      
+    return device.status as TuyaDeviceStatus[];
+  }
+
+  /**
    * Get the current status of a device
    */
   public async getDeviceStatus(deviceId: string): Promise<TuyaDeviceStatus[]> {
+    if (this.mobileApi && this.mobileApi.getTokens()) {
+      const response = await this.mobileApi.request<unknown>( // Typings for Mobile API result?
+        `/v1.0/m/life/devices/${deviceId}/status`,
+        'GET',
+      );
+      // Status format might be different for Mobile API? 
+      // SDK `update_device_strategy_info` gets status, result contains "dpStatusRelationDTOS"?
+      // But standard Open API `v1.0/devices/{id}/status` returns Simple list.
+      // Let's assume for now and debug if it fails.
+      // Wait, SDK: result = response.get("result", {}) -> "dpStatusRelationDTOS". 
+      // This looks more like specification/strategy.
+      // Re-read SDK carefully. 
+      // `update_device_strategy_info` uses endpoint `/v1.0/m/life/devices/{device_id}/status`
+      // But `query_devices_by_home` result has `status` property already!
+      // Maybe we don't need a separate call if we just listed?
+      // But for polling we need it.
+      
+      // Let's look at `query_devices_by_ids`
+      // It calls `/v1.0/m/life/ha/devices/detail`. 
+      
+      // If we want status, maybe just use details endpoint?
+      // Let's use `/v1.0/m/life/devices/${deviceId}/status` as per SDK `update_device_strategy_info` but check result format.
+      // Actually `TuyaDevice` interface has `status` field.
+      
+      if (!response.success || !response.result) {
+        throw new Error(`Failed to get device status (Mobile): ${response.msg}`);
+      }
+      
+      // The result of `device status strategy` in SDK seems complex.
+      // Let's try `v1.0/m/life/ha/devices/detail` instead for status?
+      // SDK `query_devices_by_ids` returns list of devices with status.
+      // That seems safer mapping.
+      
+      return this.getDeviceStatusMobile(deviceId);
+    }
+
     const response = await this.api.request<TuyaDeviceStatus[]>(
       `/v1.0/devices/${deviceId}/status`,
       'GET',
@@ -195,6 +256,21 @@ export class TuyaDeviceAPI {
    * Get detailed device information
    */
   public async getDeviceInfo(deviceId: string): Promise<TuyaDevice> {
+    if (this.mobileApi && this.mobileApi.getTokens()) {
+      // Use device detail endpoint
+      // SDK: query_devices_by_ids -> /v1.0/m/life/ha/devices/detail
+      const response = await this.mobileApi.request<unknown>(
+        '/v1.0/m/life/ha/devices/detail',
+        'GET',
+        { devIds: deviceId },
+      );
+       
+      if (!response.success || !response.result || !Array.isArray(response.result)) {
+        throw new Error(`Failed to get device info (Mobile): ${response.msg}`);
+      }
+      return response.result[0] as TuyaDevice;
+    }
+
     const response = await this.api.request<TuyaDevice>(
       `/v1.0/devices/${deviceId}`,
       'GET',
@@ -211,6 +287,21 @@ export class TuyaDeviceAPI {
    * Send commands to a device
    */
   public async sendCommands(deviceId: string, commands: TuyaDeviceCommand[]): Promise<boolean> {
+    if (this.mobileApi && this.mobileApi.getTokens()) {
+      // SDK: send_commands -> /v1.1/m/thing/{device_id}/commands
+      const response = await this.mobileApi.request<boolean>(
+        `/v1.1/m/thing/${deviceId}/commands`,
+        'POST',
+        {},
+        { commands },
+      );
+      
+      if (!response.success) {
+        throw new Error(`Failed to send commands (Mobile): ${response.msg}`);
+      }
+      return response.result ?? true;
+    }
+
     const response = await this.api.request<boolean>(
       `/v1.0/devices/${deviceId}/commands`,
       'POST',
