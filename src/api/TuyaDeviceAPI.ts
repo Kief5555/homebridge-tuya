@@ -340,10 +340,11 @@ export class TuyaDeviceAPI {
     
     // Check for V1 (scale 0-255)
     if (status.some(s => s.code === 'bright_value')) {
-      // Tuya uses 0-255 scale for brightness V1 (min 25 typically)
-      const value = Math.round((brightness / 100) * 255);
-      // Ensure min value if needed, but 0 usually ok or handled by device
-      return this.sendCommands(deviceId, [{ code: 'bright_value', value }]);
+       // Tuya uses 0-255 scale for brightness V1 (min 25 typically)
+       const value = Math.round((brightness / 100) * 255);
+       // Ensure value is within range
+       const clamped = Math.max(25, Math.min(255, value));
+       return this.sendCommands(deviceId, [{ code: 'bright_value', value: clamped }]);
     }
     
     throw new Error('Device does not support known brightness codes');
@@ -357,14 +358,16 @@ export class TuyaDeviceAPI {
     
     // Check for V2 (0-1000)
     if (status.some(s => s.code === 'temp_value_v2')) {
-      const value = Math.round(((kelvin - 2700) / (6500 - 2700)) * 1000);
-      return this.sendCommands(deviceId, [{ code: 'temp_value_v2', value }]);
+       const ratio = Math.max(0, Math.min(1, (kelvin - 2700) / (6500 - 2700)));
+       const value = Math.round(ratio * 1000);
+       return this.sendCommands(deviceId, [{ code: 'temp_value_v2', value }]);
     }
     
     // Check for V1 (0-255)
     if (status.some(s => s.code === 'temp_value')) {
-      const value = Math.round(((kelvin - 2700) / (6500 - 2700)) * 255);
-      return this.sendCommands(deviceId, [{ code: 'temp_value', value }]);
+        const ratio = Math.max(0, Math.min(1, (kelvin - 2700) / (6500 - 2700)));
+        const value = Math.round(ratio * 255);
+        return this.sendCommands(deviceId, [{ code: 'temp_value', value }]);
     }
     
     // Warning: some devices use specific ranges, need improved handling if this fails
@@ -392,14 +395,14 @@ export class TuyaDeviceAPI {
 
     // Check for V1 (0-255)
     if (status.some(s => s.code === 'colour_data')) {
-      const colorValue = {
-        h: Math.round(h),           // 0-360
-        s: Math.round(s * 2.55),    // 0-255
-        v: Math.round(v * 2.55),    // 0-255
-      };
-      return this.sendCommands(deviceId, [
-        { code: 'colour_data', value: JSON.stringify(colorValue) },
-      ]);
+       const colorValue = {
+         h: Math.max(1, Math.min(360, Math.round(h))), // min 1
+         s: Math.max(0, Math.min(255, Math.round(s * 2.55))),
+         v: Math.max(0, Math.min(255, Math.round(v * 2.55))),
+       };
+       return this.sendCommands(deviceId, [
+         { code: 'colour_data', value: JSON.stringify(colorValue) },
+       ]);
     }
     
     return false;
