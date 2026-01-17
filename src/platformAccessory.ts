@@ -245,11 +245,18 @@ export class TuyaAccessory {
    * Get brightness (0-100)
    */
   async getBrightness(): Promise<CharacteristicValue> {
-    const value = this.getStatusValue('bright_value_v2') ?? this.getStatusValue('bright_value');
-    if (typeof value === 'number') {
-      // Tuya uses 10-1000 scale
-      return Math.round(value / 10);
+    // Check V2 (0-1000)
+    const v2 = this.getStatusValue('bright_value_v2');
+    if (typeof v2 === 'number') {
+      return Math.round(v2 / 10);
     }
+    
+    // Check V1 (0-255)
+    const v1 = this.getStatusValue('bright_value');
+    if (typeof v1 === 'number') {
+      return Math.round((v1 / 255) * 100);
+    }
+
     return 100;
   }
 
@@ -265,12 +272,20 @@ export class TuyaAccessory {
    * Get color temperature (in mireds, 140-500)
    */
   async getColorTemperature(): Promise<CharacteristicValue> {
-    const value = this.getStatusValue('temp_value_v2') ?? this.getStatusValue('temp_value');
-    if (typeof value === 'number') {
-      // Convert from Tuya 0-1000 to mireds (140-500)
-      const kelvin = 2700 + (value / 1000) * (6500 - 2700);
+    // Check V2 (0-1000)
+    const v2 = this.getStatusValue('temp_value_v2');
+    if (typeof v2 === 'number') {
+      const kelvin = 2700 + (v2 / 1000) * (6500 - 2700);
       return Math.round(1000000 / kelvin);
     }
+
+    // Check V1 (0-255)
+    const v1 = this.getStatusValue('temp_value');
+    if (typeof v1 === 'number') {
+      const kelvin = 2700 + (v1 / 255) * (6500 - 2700);
+      return Math.round(1000000 / kelvin);
+    }
+
     return 300; // default ~3333K
   }
 
@@ -308,7 +323,17 @@ export class TuyaAccessory {
    */
   async getSaturation(): Promise<CharacteristicValue> {
     const colorData = this.getColorData();
-    return colorData ? colorData.s / 10 : 0;
+    if (!colorData) return 0;
+    
+    // If V2, scale is 0-1000. If V1, scale is 0-255.
+    // getColorData handles creating the object, but we need to know source scale.
+    // Let's check which DP exists.
+    if (this.hasStatus('colour_data_v2')) {
+       return Math.round(colorData.s / 10);
+    } else {
+       // V1 scale 0-255
+       return Math.round((colorData.s / 255) * 100);
+    }
   }
 
   /**
@@ -326,6 +351,8 @@ export class TuyaAccessory {
     const value = this.getStatusValue('colour_data_v2') ?? this.getStatusValue('colour_data');
     if (typeof value === 'string') {
       try {
+        // Tuya V1/V2 JSON format: {"h": 120, "s": 255, "v": 255}
+        // Wait, V2 might have different keys? Usually standard h/s/v keys.
         return JSON.parse(value);
       } catch {
         return undefined;
