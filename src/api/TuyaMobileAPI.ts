@@ -93,10 +93,14 @@ export class TuyaMobileAPI {
     const headers: Record<string, string> = {
       'X-appKey': TUYA_CLIENT_ID,
       'X-requestId': rid,
-      'X-sid': '', // Session ID, seems unused/empty in SDK defaults
       'X-time': t,
     };
-
+    
+    // Only add optional headers if present
+    const sid = ''; 
+    if (sid) {
+      headers['X-sid'] = sid;
+    }
     if (this.tokens.accessToken) {
       headers['X-token'] = this.tokens.accessToken;
     }
@@ -107,7 +111,13 @@ export class TuyaMobileAPI {
     headers['X-sign'] = sign;
 
     try {
-      this.log?.debug(`MobileAPI Request: ${method} ${path}`, { rid, t, sign });
+      if (this.log?.debug) { 
+        this.log.debug(`MobileAPI Request: ${method} ${path}`);
+        if (bodyEncData) {
+          this.log.debug(`MobileAPI Body (Pre-Enc): ${JSON.stringify(body)}`);
+        }
+        this.log.debug(`MobileAPI SignStr: ${this.lastSignStr || 'Unknown'}`); // Need to capture signStr
+      }
       
       const response = await this.client.request({
         url: path,
@@ -179,6 +189,9 @@ export class TuyaMobileAPI {
     return secret.substring(0, 16);
   }
 
+  // helper
+  private lastSignStr = '';
+
   // _restful_sign in SDK
   private signRequest(
     hashKey: string, 
@@ -210,9 +223,9 @@ export class TuyaMobileAPI {
       signStr += bodyEncData;
     }
     
-    // hash_value = hmac.new(hash_key, sign_str, hashlib.sha256)
     const hmac = crypto.createHmac('sha256', hashKey);
     hmac.update(signStr);
+    this.lastSignStr = signStr; // Capture for debugging
     return hmac.digest('hex');
   }
 
