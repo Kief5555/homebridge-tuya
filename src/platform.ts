@@ -4,6 +4,7 @@ import { TuyaAccessory } from './platformAccessory.js';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
 import { 
   TuyaOpenAPI, 
+  TuyaMobileAPI,
   TuyaLinkingAuth, 
   TuyaDeviceAPI, 
   TuyaDevice, 
@@ -34,6 +35,7 @@ export class TuyaPlatform implements DynamicPlatformPlugin {
 
   // Tuya API instances
   private api!: TuyaOpenAPI;
+  private mobileApi!: TuyaMobileAPI;
   private deviceApi!: TuyaDeviceAPI;
   private linkingAuth!: TuyaLinkingAuth;
 
@@ -73,13 +75,23 @@ export class TuyaPlatform implements DynamicPlatformPlugin {
 
     // Create API instances - no credentials needed!
     this.api = new TuyaOpenAPI(region, this.log);
-    this.deviceApi = new TuyaDeviceAPI(this.api, this.log);
+    const endpoints = {
+      US: 'https://openapi.tuyaus.com',
+      EU: 'https://openapi.tuyaeu.com',
+      CN: 'https://openapi.tuyacn.com',
+      IN: 'https://openapi.tuyain.com',
+    };
+    const baseUrl = endpoints[region] || endpoints.US;
+    
+    this.mobileApi = new TuyaMobileAPI(baseUrl, this.log);
+    this.deviceApi = new TuyaDeviceAPI(this.api, this.mobileApi, this.log);
     this.linkingAuth = new TuyaLinkingAuth(region, this.log);
 
     // Restore tokens if available
     if (this.config.tokens?.accessToken) {
       this.log.debug('Restoring saved tokens');
       this.api.setTokens(this.config.tokens);
+      this.mobileApi.setTokens(this.config.tokens);
     }
   }
 

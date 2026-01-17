@@ -5,6 +5,7 @@
  */
 
 import { TuyaOpenAPI } from './TuyaOpenAPI.js';
+import { TuyaMobileAPI } from './TuyaMobileAPI.js';
 import type { Logger } from 'homebridge';
 
 export interface TuyaDevice {
@@ -89,6 +90,7 @@ export type AccessoryType = typeof DEVICE_CATEGORIES[DeviceCategory];
 export class TuyaDeviceAPI {
   constructor(
     private readonly api: TuyaOpenAPI,
+    private readonly mobileApi?: TuyaMobileAPI,
     private readonly log?: Logger,
   ) {}
 
@@ -97,6 +99,12 @@ export class TuyaDeviceAPI {
    */
   public async getDeviceList(): Promise<TuyaDevice[]> {
     const tokens = this.api.getTokens();
+    
+    // Check if we should use Mobile API
+    if (this.mobileApi && this.mobileApi.getTokens()) {
+      return this.getDeviceListMobile();
+    }
+
     if (!tokens?.uid) {
       throw new Error('No authenticated user. Please link your account first.');
     }
@@ -113,6 +121,51 @@ export class TuyaDeviceAPI {
     this.log?.debug('Found', response.result.length, 'devices');
 
     return response.result;
+  }
+
+  /**
+   * Get devices using Mobile API (HA flow)
+   * Steps: 1. Get Homes 2. Get Devices for each Home
+   */
+  private async getDeviceListMobile(): Promise<TuyaDevice[]> {
+    this.log?.debug('Using Mobile API for device discovery');
+    
+    // 1. Query Homes
+    const homeResponse = await this.mobileApi!.request<unknown[]>(
+      '/v1.0/m/life/users/homes',
+      'GET',
+    );
+    
+    if (!homeResponse.success || !homeResponse.result) {
+      throw new Error(`Failed to get homes: ${homeResponse.msg}`);
+    }
+    
+    const homes = homeResponse.result as { homeId?: string; ownerId?: string }[];
+    this.log?.debug(`Found ${homes.length} homes`);
+    
+    let allDevices: TuyaDevice[] = [];
+    
+    // 2. Query Devices for each home
+    for (const home of homes) {
+      const homeId = home.homeId || home.ownerId; // SDK uses ownerId as homeId usage?
+      // SDK: _home = SmartLifeHome(str(home["ownerId"]), home["name"])
+      // query_devices_by_home(home_id) calls /v1.0/m/life/ha/home/devices with homeId param
+       
+      const devResponse = await this.mobileApi!.request<unknown[]>(
+        '/v1.0/m/life/ha/home/devices',
+        'GET',
+        { homeId: homeId }, 
+      );
+       
+      if (devResponse.success && devResponse.result) {
+        // Map to TuyaDevice if needed, but the structure is likely similar enough or needs adaptation using CustomerDevice class reference logic
+        // For now, let's assume result confirms to TuyaDevice roughly.
+        // SDK CustomerDevice has id, name, local_key, ... matches well.
+        allDevices = allDevices.concat(devResponse.result as TuyaDevice[]);
+      }
+    }
+    
+    return allDevices;
   }
 
   /**

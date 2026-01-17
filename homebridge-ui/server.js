@@ -14,13 +14,6 @@ import axios from 'axios';
 const TUYA_CLIENT_ID = 'HA_3y9q4ak7g4ephrvke';
 const TUYA_SCHEMA = 'haauthorize';
 
-// Tuya API endpoints by region
-const ENDPOINTS = {
-  US: 'https://openapi.tuyaus.com',
-  EU: 'https://openapi.tuyaeu.com',
-  CN: 'https://openapi.tuyacn.com',
-  IN: 'https://openapi.tuyain.com',
-};
 
 class TuyaUiServer extends HomebridgePluginUiServer {
   constructor() {

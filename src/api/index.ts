@@ -12,6 +12,8 @@ export type { TuyaRegion, TuyaTokens, QRCodeData, QRAuthStatus } from './TuyaLin
 export { TuyaOpenAPI } from './TuyaOpenAPI.js';
 export type { TuyaApiResponse } from './TuyaOpenAPI.js';
 
+export { TuyaMobileAPI } from './TuyaMobileAPI.js';
+
 export { TuyaDeviceAPI, DEVICE_CATEGORIES } from './TuyaDeviceAPI.js';
 export type { 
   TuyaDevice, 

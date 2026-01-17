@@ -180,11 +180,11 @@ export class TuyaLinkingAuth {
       
       // If we get "User Code Incorrect" etc, throw error
       if (data.code && data.code !== 0) {
-         // throw new Error(`Tuya API error: ${data.msg}`);
-         // Pending status check might be tricky without documentation.
-         // Assuming pending checks just return "not authorized" or similar.
-         // For now, let's assume if it fails it's pending unless it's an error.
-         return { status: 'pending' };
+        // throw new Error(`Tuya API error: ${data.msg}`);
+        // Pending status check might be tricky without documentation.
+        // Assuming pending checks just return "not authorized" or similar.
+        // For now, let's assume if it fails it's pending unless it's an error.
+        return { status: 'pending' };
       }
     }
 
