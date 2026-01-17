@@ -319,41 +319,90 @@ export class TuyaDeviceAPI {
    * Turn a device on or off
    */
   public async setDevicePower(deviceId: string, on: boolean): Promise<boolean> {
-    return this.sendCommands(deviceId, [{ code: 'switch_led', value: on }]);
+    const status = await this.getDeviceStatus(deviceId);
+    const code = status.some(s => s.code === 'switch_led') ? 'switch_led' : 'switch_1';
+    return this.sendCommands(deviceId, [{ code, value: on }]);
   }
 
   /**
    * Set brightness (for lights)
    */
   public async setBrightness(deviceId: string, brightness: number): Promise<boolean> {
-    // Tuya uses 10-1000 scale for brightness
-    const value = Math.round(brightness * 10);
-    return this.sendCommands(deviceId, [{ code: 'bright_value_v2', value }]);
+    // Check supported codes
+    const status = await this.getDeviceStatus(deviceId);
+    
+    // Check for V2 first (scale 0-1000)
+    if (status.some(s => s.code === 'bright_value_v2')) {
+      // Tuya uses 10-1000 scale for brightness V2
+      const value = Math.round(brightness * 10);
+      return this.sendCommands(deviceId, [{ code: 'bright_value_v2', value }]);
+    }
+    
+    // Check for V1 (scale 0-255)
+    if (status.some(s => s.code === 'bright_value')) {
+      // Tuya uses 0-255 scale for brightness V1 (min 25 typically)
+      const value = Math.round((brightness / 100) * 255);
+      // Ensure min value if needed, but 0 usually ok or handled by device
+      return this.sendCommands(deviceId, [{ code: 'bright_value', value }]);
+    }
+    
+    throw new Error('Device does not support known brightness codes');
   }
 
   /**
    * Set color temperature (for lights, in Kelvin)
    */
   public async setColorTemperature(deviceId: string, kelvin: number): Promise<boolean> {
-    // Tuya uses 0-1000 scale for color temp
-    // Map from typical 2700K-6500K range
-    const value = Math.round(((kelvin - 2700) / (6500 - 2700)) * 1000);
-    return this.sendCommands(deviceId, [{ code: 'temp_value_v2', value }]);
+    const status = await this.getDeviceStatus(deviceId);
+    
+    // Check for V2 (0-1000)
+    if (status.some(s => s.code === 'temp_value_v2')) {
+      const value = Math.round(((kelvin - 2700) / (6500 - 2700)) * 1000);
+      return this.sendCommands(deviceId, [{ code: 'temp_value_v2', value }]);
+    }
+    
+    // Check for V1 (0-255)
+    if (status.some(s => s.code === 'temp_value')) {
+      const value = Math.round(((kelvin - 2700) / (6500 - 2700)) * 255);
+      return this.sendCommands(deviceId, [{ code: 'temp_value', value }]);
+    }
+    
+    // Warning: some devices use specific ranges, need improved handling if this fails
+    return false;
   }
 
   /**
    * Set HSV color (for RGB lights)
    */
   public async setColor(deviceId: string, h: number, s: number, v: number): Promise<boolean> {
-    // Tuya expects HSV in specific format
-    const colorValue = {
-      h: Math.round(h),           // 0-360
-      s: Math.round(s * 10),      // 0-1000
-      v: Math.round(v * 10),      // 0-1000
-    };
-    return this.sendCommands(deviceId, [
-      { code: 'colour_data_v2', value: JSON.stringify(colorValue) },
-    ]);
+    const status = await this.getDeviceStatus(deviceId);
+
+    // Check for V2 (0-1000)
+    if (status.some(s => s.code === 'colour_data_v2')) {
+      // Tuya expects HSV in specific format
+      const colorValue = {
+        h: Math.round(h),           // 0-360
+        s: Math.round(s * 10),      // 0-1000
+        v: Math.round(v * 10),      // 0-1000
+      };
+      return this.sendCommands(deviceId, [
+        { code: 'colour_data_v2', value: JSON.stringify(colorValue) },
+      ]);
+    }
+
+    // Check for V1 (0-255)
+    if (status.some(s => s.code === 'colour_data')) {
+      const colorValue = {
+        h: Math.round(h),           // 0-360
+        s: Math.round(s * 2.55),    // 0-255
+        v: Math.round(v * 2.55),    // 0-255
+      };
+      return this.sendCommands(deviceId, [
+        { code: 'colour_data', value: JSON.stringify(colorValue) },
+      ]);
+    }
+    
+    return false;
   }
 
   /**
