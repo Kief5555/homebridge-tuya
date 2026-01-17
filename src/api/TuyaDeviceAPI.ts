@@ -100,9 +100,16 @@ export class TuyaDeviceAPI {
   public async getDeviceList(): Promise<TuyaDevice[]> {
     const tokens = this.api.getTokens();
     
-    // Check if we should use Mobile API
-    if (this.mobileApi && this.mobileApi.getTokens()) {
-      return this.getDeviceListMobile();
+    this.log?.debug('Checking Mobile API availability...');
+    if (this.mobileApi) {
+        const mobileTokens = this.mobileApi.getTokens();
+        this.log?.debug('Mobile API instance present. Tokens:', mobileTokens ? 'Yes' : 'No');
+        if (mobileTokens) {
+            this.log?.debug('Mobile Tokens:', JSON.stringify(mobileTokens));
+            return this.getDeviceListMobile();
+        }
+    } else {
+        this.log?.debug('Mobile API instance is UNDEFINED');
     }
 
     if (!tokens?.uid) {
