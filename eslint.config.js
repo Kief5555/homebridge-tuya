@@ -30,21 +30,11 @@ export default tseslint.config(
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
-    },
-  },
-  eslint.configs.recommended,
-  ...tseslint.configs.recommended,
-  {
-    files: ['homebridge-ui/server.js'],
-    languageOptions: {
-      sourceType: 'commonjs',
       globals: {
         ...globals.node,
       },
     },
-    rules: {
-      '@typescript-eslint/no-require-imports': 'off',
-      'no-redeclare': 'off',
-    },
   },
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
 );

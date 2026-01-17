@@ -5,10 +5,10 @@
  * Uses embedded Tuya credentials - no user configuration needed.
  */
 
-const { HomebridgePluginUiServer } = require('@homebridge/plugin-ui-utils');
-const QRCode = require('qrcode');
-const crypto = require('crypto');
-const axios = require('axios');
+import { HomebridgePluginUiServer } from '@homebridge/plugin-ui-utils';
+import QRCode from 'qrcode';
+import crypto from 'crypto';
+import axios from 'axios';
 
 // Embedded credentials (same as Home Assistant)
 const TUYA_CLIENT_ID = 'HA_3y9q4ak7g4ephrvke';
