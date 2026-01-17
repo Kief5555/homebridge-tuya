@@ -1,10 +1,12 @@
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
+import globals from 'globals';
 
 export default tseslint.config(
   {
     ignores: ['dist/**'],
   },
+
   {
     rules: {
       'quotes': ['error', 'single'],
@@ -32,4 +34,17 @@ export default tseslint.config(
   },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
+  {
+    files: ['homebridge-ui/server.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+      'no-redeclare': 'off',
+    },
+  },
 );
